@@ -1,0 +1,46 @@
+image: docker:latest
+
+variables:
+
+  GIT_SSL_NO_VERIFY: "1"    
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs" 
+  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"    
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_VERIFY: 1
+
+services:
+  - name: docker:dind
+    command: ["--mtu=1450"]
+
+stages:
+  - build
+  - test
+  - push
+  - deploy
+
+before_script:
+  - until docker info; do sleep 1; done
+  - docker info
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+build:
+  stage: build
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
+    - docker build --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE:latest .
+
+test:
+  stage: test
+  script:
+    - apk add --update nodejs npm
+    - npm install
+    - npm test
+
+push:
+  stage: push
+  script:
+    - docker build --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE:latest .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+
